@@ -40,12 +40,12 @@ RUN \
 ENV OCCT_COMMIT_HASH_FULL bb368e271e24f63078129283148ce83db6b9670a
 WORKDIR /occt/
 RUN \
-  curl "https://git.dev.opencascade.org/gitweb/?p=occt.git;a=snapshot;h=${OCCT_COMMIT_HASH_FULL};sf=tgz" -o occt.tar.gz && \
-  tar -xvf occt.tar.gz && \
-  export OCCT_COMMIT_HASH=$(echo ${OCCT_COMMIT_HASH_FULL} | cut -c 1-7) && \
-  mv occt-$OCCT_COMMIT_HASH/* . && \
-  mv occt-$OCCT_COMMIT_HASH/.* . || true && \
-  rm occt-$OCCT_COMMIT_HASH -r
+  git clone --depth 1 https://github.com/Open-Cascade-SAS/OCCT.git /tmp/occt-repo && \
+  cd /tmp/occt-repo && \
+  git fetch --depth 1 origin ${OCCT_COMMIT_HASH_FULL} && \
+  git checkout ${OCCT_COMMIT_HASH_FULL} && \
+  cp -a /tmp/occt-repo/. /occt/ && \
+  rm -rf /tmp/occt-repo
 
 WORKDIR /opencascade.js/
 COPY src ./src
