@@ -16,8 +16,7 @@ def buildOneFile(args, item):
     command = [
       "emcc",
       "-flto",
-      "-fexceptions",
-      "-sDISABLE_EXCEPTION_CATCHING=0",
+      "-fwasm-exceptions",
       "-DIGNORE_NO_ATOMICS=1",
       "-DOCCT_NO_PLUGINS",
       "-frtti",
