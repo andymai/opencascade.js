@@ -1,11 +1,11 @@
---- /occt-original/src/Standard/Standard_Time.hxx
-+++ /occt/src/Standard/Standard_Time.hxx
+--- /occt-original/src/FoundationClasses/TKernel/Standard/Standard_Time.hxx
++++ /occt/src/FoundationClasses/TKernel/Standard/Standard_Time.hxx
 @@ -16,22 +16,17 @@
- 
+
  #include <Standard_TypeDef.hxx>
- 
+
 -// ===============================================
--// Methods from Standard_Entity class which are redefined:  
+-// Methods from Standard_Entity class which are redefined:
 -//    - IsEqual
 -// ===============================================
 -
@@ -25,7 +25,7 @@
  {
    return theOne == theTwo;
  }
- 
+
  #endif
 -
 -#endif

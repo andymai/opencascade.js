@@ -95,7 +95,7 @@ if not os.path.exists(ltoLibDir):
   subprocess.call(["embuilder", "build", "ALL", "--lto"])
 
 # Fix OCCT macro that conflicts with emscripten val.h CONSTRUCTOR enum member
-occtFixFile = "/occt/src/IntCurve/IntCurve_IntConicConic.lxx"
+occtFixFile = "/occt/src/ModelingAlgorithms/TKGeomAlgo/IntCurve/IntCurve_IntConicConic.lxx"
 if os.path.exists(occtFixFile):
   with open(occtFixFile, "r") as f:
     content = f.read()
