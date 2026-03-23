@@ -46,21 +46,23 @@ RUN \
   curl -fsSL "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/${OCCT_TAG}.tar.gz" \
     | tar xz --strip-components=1
 
-WORKDIR /opencascade.js/
-COPY src ./src
-WORKDIR /src/
-
 ARG threading=single-threaded
 ENV threading=${threading}
 
-# ── base-image: deps + OCCT + patches ────────────────────────────────
-FROM base-image AS patched-image
+# ── Layer 1: patches + filter scripts (changes rarely) ───────────────
+# Copy only patches and filter scripts first — these change infrequently.
+# Changing build/link scripts won't invalidate binding generation cache.
+WORKDIR /opencascade.js/
+COPY src/patches ./src/patches
+COPY src/filter ./src/filter
+COPY src/emscripten_fix ./src/emscripten_fix
+COPY src/undef_macros.h ./src/undef_macros.h
 
 RUN \
   mkdir -p /opencascade.js/build/ && \
   mkdir -p /opencascade.js/dist/
 
-# Apply patches (replaces applyPatches.py)
+# Apply patches
 RUN \
   cd / && \
   for patch in /opencascade.js/src/patches/*.patch; do \
@@ -68,21 +70,23 @@ RUN \
     patch -p0 < "${patch}" || { echo "FAILED: ${patch}"; exit 1; }; \
   done
 
-# ── bindings-image: generate C++ bindings from OCCT headers ──────────
-FROM patched-image AS bindings-image
+# ── Layer 2: binding generation (changes when filter scripts change) ──
+COPY src/generateBindings.py src/bindings.py src/Common.py ./src/
+COPY src/wasmGenerator ./src/wasmGenerator
 
 RUN /opencascade.js/src/generateBindings.py
 
-# ── compiled-image: compile all sources + bindings to .o ─────────────
-FROM bindings-image AS compiled-image
-
-# Pre-build LTO sysroot before compilation
-RUN embuilder build ALL --lto
+# ── Layer 3: compilation (changes when compile scripts change) ────────
+COPY src/compileBindings.py src/compileSources.py ./src/
 
 RUN \
   /opencascade.js/src/compileBindings.py ${threading} && \
   /opencascade.js/src/compileSources.py ${threading} && \
   chmod -R 777 /opencascade.js/ && \
   chmod -R 777 /occt
+
+# ── Layer 4: link scripts (changes most frequently) ──────────────────
+COPY src/buildFromYaml.py src/customBuildSchema.py ./src/
+COPY src/build-wasm.sh src/build-native.sh src/setup-pch.sh src/listIncludes.py ./src/
 
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
