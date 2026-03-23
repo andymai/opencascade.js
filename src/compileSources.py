@@ -79,28 +79,41 @@ def buildObjectFiles(file, args):
   else:
     print(relativeFile + ".o already exists, skipping")
 
-allModules = {}
+import re
+
+def parseCmakeList(filepath):
+  """Parse a CMake set() command and return the list of values."""
+  with open(filepath, "r") as f:
+    content = f.read()
+  # Match: set(VARNAME val1 val2 ...) across multiple lines
+  match = re.search(r'set\(\s*\w+\s+(.*?)\)', content, re.DOTALL)
+  if not match:
+    return []
+  return [v.strip() for v in match.group(1).split() if v.strip()]
+
+# Build toolkit→packages mapping from PACKAGES.cmake files (V8 structure)
+# V8 layout: src/Module/Toolkit/PACKAGES.cmake → lists packages
+# V8 layout: src/Module/Toolkit/Package/ → contains source files
+allToolkits = {}
 for dirpath, dirnames, filenames in os.walk(sourceBasePath):
-  if not any(x for x in filenames if x == "PACKAGES"):
-    continue
-  allModules[os.path.basename(dirpath)] = []
-  with open(dirpath + "/PACKAGES", "r") as a_file:
-    for package in a_file:
-      packageName = package.strip()
-      allModules[os.path.basename(dirpath)].append(packageName)
-def getModuleNameByPackageName(inputPackageName):
-  for moduleName in allModules:
-    for package in allModules[moduleName]:
-      packageName = package.strip()
-      if packageName == inputPackageName:
-        return moduleName
+  if "PACKAGES.cmake" in filenames:
+    toolkitName = os.path.basename(dirpath)
+    allToolkits[toolkitName] = parseCmakeList(os.path.join(dirpath, "PACKAGES.cmake"))
+
+def getToolkitByPackageName(inputPackageName):
+  for toolkitName, packages in allToolkits.items():
+    if inputPackageName in packages:
+      return toolkitName
   return ""
 
 filesToBuild = []
 for dirpath, dirnames, filenames in os.walk(sourceBasePath):
-  packageOrModuleName = os.path.basename(dirpath.replace(sourceBasePath, ""))
+  # In V8, package dirs are at: src/Module/Toolkit/Package/
+  # The package name is the last component of the path
+  packageName = os.path.basename(dirpath)
+  toolkitName = getToolkitByPackageName(packageName)
   for item in filenames:
-    if not filterPackages(packageOrModuleName) or not filterPackages(getModuleNameByPackageName(packageOrModuleName)):
+    if not filterPackages(packageName) or not filterPackages(toolkitName):
       continue
     if filterSourceFile(dirpath + "/" + item):
       filesToBuild.append(dirpath + "/" + item)
