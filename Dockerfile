@@ -76,13 +76,13 @@ RUN /opencascade.js/src/generateBindings.py
 # ── compiled-image: compile all sources + bindings to .o ─────────────
 FROM bindings-image AS compiled-image
 
+# Pre-build LTO sysroot before compilation
+RUN embuilder build ALL --lto
+
 RUN \
   /opencascade.js/src/compileBindings.py ${threading} && \
   /opencascade.js/src/compileSources.py ${threading} && \
   chmod -R 777 /opencascade.js/ && \
   chmod -R 777 /occt
-
-# Pre-build LTO sysroot so link step doesn't have to
-RUN embuilder build ALL --lto
 
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
