@@ -25,7 +25,7 @@ RUN \
 # libclang 18.1.1 is used only for header parsing (generateBindings.py),
 # not for compilation. It does not need to match emsdk's LLVM 21.
 RUN \
-  pip install \
+  pip install --break-system-packages \
   libclang==18.1.1 \
   pyyaml==6.0.2 \
   cerberus==1.3.4 \
