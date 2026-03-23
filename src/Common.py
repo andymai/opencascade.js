@@ -26,7 +26,7 @@ includePathArgs = \
   list(dict.fromkeys(map(lambda x: "-I" + x, ocIncludePaths))) + \
   list(map(lambda x: "-I" + x, [
     "/emsdk/upstream/emscripten/system/include/",
-    "/usr/lib/gcc/x86_64-linux-gnu/8/include-fixed/",
+    "/usr/lib/gcc/x86_64-linux-gnu/" + sorted(next(os.walk('/usr/lib/gcc/x86_64-linux-gnu/'))[1])[-1] + "/include-fixed/",
     "/emsdk/upstream/emscripten/system/lib/libcxx/include/",
     "/emsdk/upstream/lib/clang/" + next(os.walk('/emsdk/upstream/lib/clang/'))[1][0] + "/include/",
     "/emsdk/upstream/emscripten/system/lib/libcxx/include/__support/newlib/"

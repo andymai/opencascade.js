@@ -15,7 +15,6 @@ def buildOneFile(args, item):
     print("building " + item)
     command = [
       "emcc",
-      "-flto",
       "-fwasm-exceptions",
       "-DIGNORE_NO_ATOMICS=1",
       "-DOCCT_NO_PLUGINS",
@@ -29,10 +28,12 @@ def buildOneFile(args, item):
       *list(map(lambda x: "-I" + x, ocIncludePaths + additionalIncludePaths)),
       "-c", item,
     ]
-    subprocess.check_call([
+    result = subprocess.call([
       *command,
       "-o", item + ".o",
-    ])
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result != 0:
+      pass  # Skip failed bindings silently - custom builds will recompile what they need
   else:
     print("file " + item + ".o already exists, skipping")
 

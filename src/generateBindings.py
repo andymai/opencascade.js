@@ -75,7 +75,7 @@ def processChildBatch(customCode, generator, buildType: str, extension: str, fil
   children = list(generator(tu)[batch.start:batch.stop])
 
   for child in children:
-    if not filterFunction(child, customBuild) or child.spelling == "":
+    if not filterFunction(child, customBuild) or child.spelling == "" or child.spelling.startswith("("):
       continue
 
     relOcFileName: str = child.extent.start.file.name.replace(occtBasePath, "")
@@ -222,6 +222,7 @@ def parse(additionalCppCode = ""):
 
 referenceTypeTemplateDefs = \
   "\n" + \
+  "#undef CONSTRUCTOR\n" + \
   "#include <emscripten/bind.h>\n" + \
   "using namespace emscripten;\n" + \
   "#include <functional>\n" + \

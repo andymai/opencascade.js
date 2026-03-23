@@ -1,4 +1,4 @@
-FROM emscripten/emsdk:3.1.14 AS base-image
+FROM emscripten/emsdk:3.1.61 AS base-image
 
 RUN \
   apt update -y && \
@@ -24,14 +24,14 @@ RUN \
 
 RUN \
   pip install \
-  libclang==15.0.6.1 \
-  pyyaml==6.0 \
+  libclang==18.1.1 \
+  pyyaml==6.0.2 \
   cerberus==1.3.4 \
   argparse==1.4.0
 
 WORKDIR /rapidjson/
 RUN \
-  git clone -b v1.1.0 https://github.com/Tencent/rapidjson.git . 
+  git clone --depth 1 -b master https://github.com/Tencent/rapidjson.git .
 
 WORKDIR /freetype/
 RUN \

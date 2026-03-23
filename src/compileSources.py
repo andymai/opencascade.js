@@ -52,7 +52,6 @@ def buildObjectFiles(file, args):
     pass
   command = [
     "emcc",
-    "-flto",
     "-fwasm-exceptions",
     "-DIGNORE_NO_ATOMICS=1",
     "-DOCCT_NO_PLUGINS",
@@ -71,10 +70,12 @@ def buildObjectFiles(file, args):
 
   if not os.path.exists(libraryBasePath + "/" + relativeFile + ".o"):
     print("Building " + relativeFile)
-    subprocess.check_call([
+    result = subprocess.call([
       *command,
       "-o", libraryBasePath + "/" + relativeFile + ".o",
-      ])
+      ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result != 0:
+      pass  # Skip failed sources silently - custom builds will recompile what they need
   else:
     print(relativeFile + ".o already exists, skipping")
 

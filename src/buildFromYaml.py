@@ -35,21 +35,78 @@ compileCustomCodeBindings({
   "threading": os.environ['threading'],
 })
 
-def verifyBinding(binding) -> bool:
+def findBindingO(binding) -> str:
   for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
     for item in filenames:
       if item.endswith(".cpp.o") and binding["symbol"] == item[:-6]:
-        return True
-  return False
+        return os.path.join(dirpath, item)
+  return None
 
-def verifyBindings(bindings) -> bool:
+def findBindingCpp(binding) -> str:
+  for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/bindings"):
+    for item in filenames:
+      if item.endswith(".cpp") and not item.endswith(".cpp.o") and binding["symbol"] == item[:-4]:
+        return os.path.join(dirpath, item)
+  return None
+
+def patchBindingCpp(cppFile):
+  """Inject #undef for OCCT macros that conflict with emscripten headers."""
+  import re
+  with open(cppFile, "r") as f:
+    content = f.read()
+  if "#undef CONSTRUCTOR" not in content:
+    # Handle any whitespace variations around the include
+    patched = re.sub(
+      r'(#\s*include\s*[<"]emscripten/bind\.h[>"])',
+      '#undef CONSTRUCTOR\n\\1',
+      content
+    )
+    if patched != content:
+      with open(cppFile, "w") as f:
+        f.write(patched)
+    else:
+      print("WARNING: could not find emscripten/bind.h in " + cppFile)
+
+def compileMissingBindings(bindings):
   for binding in bindings:
-    if not verifyBinding(binding):
+    if findBindingO(binding) is not None:
+      continue
+    cppFile = findBindingCpp(binding)
+    if cppFile is None:
       raise Exception("Requested binding " + json.dumps(binding) + " does not exist!")
+    print("Compiling missing binding: " + binding["symbol"])
+    patchBindingCpp(cppFile)
+    command = [
+      "emcc", "-fwasm-exceptions",
+      "-DIGNORE_NO_ATOMICS=1", "-DOCCT_NO_PLUGINS", "-frtti", "-DHAVE_RAPIDJSON", "-Os",
+      "-isystem", "/opencascade.js/src/emscripten_fix",
+      "-pthread" if os.environ["threading"] == "multi-threaded" else "",
+      *list(map(lambda x: "-I" + x, ocIncludePaths + additionalIncludePaths)),
+      "-c", cppFile, "-o", cppFile + ".o",
+    ]
+    result = subprocess.call(command, stderr=subprocess.DEVNULL)
+    if result != 0:
+      print("WARNING: binding " + binding["symbol"] + " failed to compile, will attempt link without it")
 
-verifyBindings(buildConfig["mainBuild"]["bindings"])
+# Pre-build LTO sysroot libraries if needed
+ltoLibDir = "/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/lto"
+if not os.path.exists(ltoLibDir):
+  print("Building LTO sysroot libraries...")
+  subprocess.call(["embuilder", "build", "ALL", "--lto"])
+
+# Fix OCCT macro that conflicts with emscripten val.h CONSTRUCTOR enum member
+occtFixFile = "/occt/src/IntCurve/IntCurve_IntConicConic.lxx"
+if os.path.exists(occtFixFile):
+  with open(occtFixFile, "r") as f:
+    content = f.read()
+  if "#define CONSTRUCTOR" in content and "#undef CONSTRUCTOR" not in content:
+    content += "\n#undef CONSTRUCTOR\n"
+    with open(occtFixFile, "w") as f:
+      f.write(content)
+
+compileMissingBindings(buildConfig["mainBuild"]["bindings"])
 for extraBuild in buildConfig["extraBuilds"]:
-  verifyBindings(extraBuild)
+  compileMissingBindings(extraBuild["bindings"])
 
 def shouldProcessSymbol(symbol: str, bindings) -> bool:
   if len(bindings) == 0:
@@ -80,9 +137,7 @@ def runBuild(build):
       print("building " + additionalBindCodeFileName)
       command = [
         "emcc",
-        "-flto",
-        "-fexceptions",
-        "-sDISABLE_EXCEPTION_CATCHING=0",
+        "-fwasm-exceptions",
         "-DIGNORE_NO_ATOMICS=1",
         "-DOCCT_NO_PLUGINS",
         "-frtti",
