@@ -1,4 +1,4 @@
-FROM emscripten/emsdk:3.1.61 AS base-image
+FROM emscripten/emsdk:5.0.3 AS base-image
 
 RUN \
   apt update -y && \
@@ -22,6 +22,8 @@ RUN \
   python3-setuptools \
   zlib1g-dev
 
+# libclang 18.1.1 is used only for header parsing (generateBindings.py),
+# not for compilation. It does not need to match emsdk's LLVM 21.
 RUN \
   pip install \
   libclang==18.1.1 \
@@ -31,45 +33,56 @@ RUN \
 
 WORKDIR /rapidjson/
 RUN \
-  git clone --depth 1 -b master https://github.com/Tencent/rapidjson.git .
+  git clone --depth 1 -b v1.1.0 https://github.com/Tencent/rapidjson.git .
 
 WORKDIR /freetype/
 RUN \
-  git clone -b VER-2-13-0 https://github.com/freetype/freetype.git .
+  git clone --depth 1 -b VER-2-13-0 https://github.com/freetype/freetype.git .
 
-ENV OCCT_COMMIT_HASH_FULL bb368e271e24f63078129283148ce83db6b9670a
+# OCCT V8.0.0 RC4 from GitHub tag
+ENV OCCT_TAG=V8_0_0_rc4
 WORKDIR /occt/
 RUN \
-  git clone --depth 1 https://github.com/Open-Cascade-SAS/OCCT.git /tmp/occt-repo && \
-  cd /tmp/occt-repo && \
-  git fetch --depth 1 origin ${OCCT_COMMIT_HASH_FULL} && \
-  git checkout ${OCCT_COMMIT_HASH_FULL} && \
-  cp -a /tmp/occt-repo/. /occt/ && \
-  rm -rf /tmp/occt-repo
+  curl -fsSL "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/${OCCT_TAG}.tar.gz" \
+    | tar xz --strip-components=1
 
 WORKDIR /opencascade.js/
 COPY src ./src
 WORKDIR /src/
 
 ARG threading=single-threaded
-ENV threading=$threading
+ENV threading=${threading}
 
-FROM base-image AS test-image
-
-RUN \
-  mkdir /opencascade.js/build/ && \
-  mkdir /opencascade.js/dist/ && \
-  /opencascade.js/src/applyPatches.py
-
-ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
-
-FROM test-image AS custom-build-image
+# ── base-image: deps + OCCT + patches ────────────────────────────────
+FROM base-image AS patched-image
 
 RUN \
-  /opencascade.js/src/generateBindings.py && \
+  mkdir -p /opencascade.js/build/ && \
+  mkdir -p /opencascade.js/dist/
+
+# Apply patches (replaces applyPatches.py)
+RUN \
+  cd / && \
+  for patch in /opencascade.js/src/patches/*.patch; do \
+    echo "Applying patch: ${patch}" && \
+    patch -p0 < "${patch}" || { echo "FAILED: ${patch}"; exit 1; }; \
+  done
+
+# ── bindings-image: generate C++ bindings from OCCT headers ──────────
+FROM patched-image AS bindings-image
+
+RUN /opencascade.js/src/generateBindings.py
+
+# ── compiled-image: compile all sources + bindings to .o ─────────────
+FROM bindings-image AS compiled-image
+
+RUN \
   /opencascade.js/src/compileBindings.py ${threading} && \
   /opencascade.js/src/compileSources.py ${threading} && \
   chmod -R 777 /opencascade.js/ && \
   chmod -R 777 /occt
+
+# Pre-build LTO sysroot so link step doesn't have to
+RUN embuilder build ALL --lto
 
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
