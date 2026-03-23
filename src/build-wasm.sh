@@ -20,34 +20,6 @@ export OCJS_JOBS="${OCJS_JOBS:-$(nproc)}"
 export THREADING="${THREADING:-${threading:-single-threaded}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OCCT_SRC="/occt/src"
-BUILD_DIR="/opencascade.js/build"
-
-# ── Common flags ──────────────────────────────────────────────────────
-common_flags() {
-  local flags=(
-    -fwasm-exceptions
-    -DIGNORE_NO_ATOMICS=1
-    -DOCCT_NO_PLUGINS
-    -frtti
-    -DHAVE_RAPIDJSON
-    "${OCJS_OPT}"
-  )
-  if [ "${THREADING}" = "multi-threaded" ]; then
-    flags+=(-pthread)
-  fi
-  echo "${flags[@]}"
-}
-
-# ── Include path arguments ────────────────────────────────────────────
-include_args() {
-  local args=()
-  while IFS= read -r -d '' dir; do
-    args+=("-I${dir}")
-  done < <(find "${OCCT_SRC}" -type d -print0)
-  args+=("-I/rapidjson/include" "-I/freetype/include/freetype" "-I/freetype/include")
-  echo "${args[@]}"
-}
 
 # ── PCH subcommand ────────────────────────────────────────────────────
 cmd_pch() {

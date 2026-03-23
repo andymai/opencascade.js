@@ -80,7 +80,7 @@ def compileMissingBindings(bindings):
       "emcc", "-fwasm-exceptions",
       "-DIGNORE_NO_ATOMICS=1", "-DOCCT_NO_PLUGINS", "-frtti", "-DHAVE_RAPIDJSON", "-Os",
       "-isystem", "/opencascade.js/src/emscripten_fix",
-      "-pthread" if os.environ["threading"] == "multi-threaded" else "",
+      *(["-pthread"] if os.environ["threading"] == "multi-threaded" else []),
       *list(map(lambda x: "-I" + x, ocIncludePaths + additionalIncludePaths)),
       "-c", cppFile, "-o", cppFile + ".o",
     ]
@@ -143,7 +143,7 @@ def runBuild(build):
         "-frtti",
         "-DHAVE_RAPIDJSON",
         "-Os",
-        "-pthread" if os.environ["threading"] == "multi-threaded" else "",
+        *(["-pthread"] if os.environ["threading"] == "multi-threaded" else []),
         *list(map(lambda x: "-I" + x, ocIncludePaths + additionalIncludePaths)),
         "-c", additionalBindCodeFileName,
       ]
@@ -174,7 +174,7 @@ def runBuild(build):
     "emcc", "-lembind", ("" if additionalBindCodeO is None else additionalBindCodeO),
     *bindingsO, *sourcesO,
     "-o", os.getcwd() + "/" + build["name"],
-    "-pthread" if os.environ["threading"] == "multi-threaded" else "",
+    *(["-pthread"] if os.environ["threading"] == "multi-threaded" else []),
     *build["emccFlags"],
   ])
   print("Build finished")
