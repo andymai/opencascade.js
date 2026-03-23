@@ -100,9 +100,6 @@ def filterPackages(packageName):
 
     "XBRepMesh", # This leads to a naming clash with BRepMesh
 
-    ## Module Deprecated (V8 compatibility aliases — no source files, skip)
-    "NCollectionAliases",
-    "Deprecated",
   ]:
     return False
 
