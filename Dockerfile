@@ -62,6 +62,16 @@ RUN \
   mkdir -p /opencascade.js/build/ && \
   mkdir -p /opencascade.js/dist/
 
+# Generate Standard_Version.hxx (normally created by CMake, needed for compilation)
+RUN \
+  sed -e 's/@OCC_VERSION_MAJOR@/8/g' \
+      -e 's/@OCC_VERSION_MINOR@/0/g' \
+      -e 's/@OCC_VERSION_MAINTENANCE@/0/g' \
+      -e 's/@SET_OCC_VERSION_DEVELOPMENT@/#define OCC_VERSION_DEVELOPMENT "rc4"/g' \
+      -e 's/@OCCT_VERSION_DATE@/2026-02-16/g' \
+      /occt/adm/templates/Standard_Version.hxx.in \
+      > /occt/src/FoundationClasses/TKernel/Standard/Standard_Version.hxx
+
 # Apply patches
 RUN \
   cd / && \
