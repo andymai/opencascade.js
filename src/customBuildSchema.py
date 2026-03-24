@@ -25,7 +25,8 @@
         },
         "default": [
           "-flto",
-          "-fwasm-exceptions",
+          "-fexceptions",
+          "-sDISABLE_EXCEPTION_CATCHING=0",
           "-O3",
           "-sEXPORT_ES6=1",
           "-sEXPORTED_RUNTIME_METHODS=['FS']",
@@ -74,7 +75,8 @@
         },
         "default": [
           "-flto",
-          "-fwasm-exceptions",
+          "-fexceptions",
+          "-sDISABLE_EXCEPTION_CATCHING=0",
           "-O3",
           "-sEXPORT_ES6=1",
           "-sEXPORTED_RUNTIME_METHODS=['FS']",

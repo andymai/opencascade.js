@@ -1,6 +1,59 @@
 import clang.cindex
 
 def filterMethodOrProperty(theClass, methodOrProperty):
+  # libclang 18 misparses occ::handle<T> as int in V8. Filter methods
+  # where the handle return type causes Embind select_overload failures.
+  if theClass.spelling == "TopoDS_Shape" and methodOrProperty.spelling == "TShape":
+    return False
+
+  # V8: methods using DE_ShapeFixParameters (from filtered DE package)
+  if methodOrProperty.spelling in ("SetShapeFixParameters", "GetShapeFixParameters", "SetShapeProcessFlags"):
+    if theClass.spelling in ("STEPControl_Writer", "STEPControl_Reader", "XSControl_Reader", "IGESControl_Reader", "IGESControl_Writer"):
+      return False
+
+  # V8: Interface_Static::FillMap param type misparse
+  if theClass.spelling == "Interface_Static" and methodOrProperty.spelling == "FillMap":
+    return False
+
+  # V8: protected members in XSControl_Reader exposed by binding generator
+  if methodOrProperty.spelling in ("GetDefaultShapeFixParameters", "GetDefaultShapeProcessFlags", "Shapes"):
+    if theClass.spelling in ("XSControl_Reader", "STEPControl_Reader", "IGESControl_Reader"):
+      return False
+
+  # V8: STEPCAFControl methods with DE/ShapeProcess params that libclang misparses
+  if theClass.spelling in ("STEPCAFControl_Writer", "STEPCAFControl_Reader"):
+    if methodOrProperty.spelling in (
+      "ExternFile", "Perform",
+      "SetShapeFixParameters", "GetShapeFixParameters", "SetShapeProcessFlags",
+      "GetDefaultShapeFixParameters", "GetDefaultShapeProcessFlags", "Shapes",
+    ):
+      return False
+
+  # V8: methods with NCollection/occ::handle params that libclang 18 misparses as int
+  _v8_method_filter = {
+    "STEPConstruct_Styles": {"EncodeColor_2"},
+    "IFSelect_SignatureList": {"Init"},
+    "Transfer_ActorOfFinderProcess": {"Transfer"},
+    "Transfer_ResultFromTransient": {"ResultFromKey"},
+    "Transfer_MapContainer": {"GetMapObject", "SetMapObject"},
+    "BOPDS_DS": {"ChangeFaceInfo"},
+    "BOPAlgo_Tools": {"FillMap_2"},
+    "BRepLib_FuseEdges": {"SetConcatBSpl"},
+    "XCAFDoc_DimTolTool": {"Lock"},
+    "XCAFDoc_Editor": {"Extract_2"},
+    "XCAFDimTolObjects_Tool": {"GetRefDimensions"},
+    "ApproxInt_KnotTools": {"BuildKnots"},
+    "GeomInt_IntSS": {"BuildPCurves"},
+    "IntPatch_Intersection": {"Dump"},
+    "TopOpeBRepDS_GapFiller": {"BuildNewGeometries"},
+    "TopOpeBRepTool_CORRISO": {"GetnewS"},
+    "TopOpeBRepTool_FuseEdges": {"FusedEdges"},
+    "TopOpeBRepTool": {"PurgeClosingEdges"},
+  }
+  if theClass.spelling in _v8_method_filter:
+    if methodOrProperty.spelling in _v8_method_filter[theClass.spelling]:
+      return False
+
   # # error: no matching conversion for functional-style cast from '(lambda at /opencascade.js/build/modules/module.TKHLR.wasm.cpp:8477:153)' to 'std::function<HLRAlgo_BiPoint::PointsT &(HLRAlgo_PolyAlgo &, emscripten::val, emscripten::val, emscripten::val, emscripten::val, emscripten::val)>'
   # if \
   #   (theClass.spelling == "HLRAlgo_PolyAlgo" and methodOrProperty.spelling == "Show") or \

@@ -86,26 +86,8 @@ def filterIncludeFile(filename):
   if filename == "math_Householder.hxx":
     return False
 
-  # OCCT V8: typedef redefinition with different types (emsdk 5.x WebGL headers)
-  if (
-    filename == "OpenGl_GLESExtensions.hxx" or
-    filename == "OpenGl_GlFunctions.hxx"
-  ):
-    return False
-
-  # OCCT V8: no member named 'NbIterations' in 'MathLin::EigenResult'
-  if filename == "MathLin_Jacobi.hxx":
-    return False
-
-  # OCCT V8: NCollectionAliases headers with broken transitive includes
-  # (reference removed types like BOPDS_ListOfPaveBlock, Graphic3d_MapOfStructure)
-  if (
-    filename == "BOPDS_DataMapOfIntegerListOfPaveBlock.hxx" or
-    filename == "BOPDS_DataMapOfPaveBlockListOfPaveBlock.hxx" or
-    filename == "BOPDS_IndexedDataMapOfPaveBlockListOfPaveBlock.hxx" or
-    filename == "BOPDS_VectorOfListOfPaveBlock.hxx" or
-    filename == "Graphic3d_MapIteratorOfMapOfStructure.hxx"
-  ):
+  # Precompiled header markers
+  if filename.endswith("_pch.hxx"):
     return False
 
   return True

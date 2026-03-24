@@ -23,9 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── PCH subcommand ────────────────────────────────────────────────────
 cmd_pch() {
-  echo "=== Generating precompiled header ==="
-  export OCCT_SRC THREADING OCJS_OPT
-  bash "${SCRIPT_DIR}/setup-pch.sh"
+  echo "=== Building flat includes + PCH ==="
+  cd "${SCRIPT_DIR}" && python3 -c "from Common import buildFlatIncludes, buildPch; buildFlatIncludes(); buildPch('${THREADING}')"
 }
 
 # ── Compile subcommand ────────────────────────────────────────────────

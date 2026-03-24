@@ -46,23 +46,7 @@ RUN \
   curl -fsSL "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/${OCCT_TAG}.tar.gz" \
     | tar xz --strip-components=1
 
-ARG threading=single-threaded
-ENV threading=${threading}
-
-# ── Layer 1: patches + filter scripts (changes rarely) ───────────────
-# Copy only patches and filter scripts first — these change infrequently.
-# Changing build/link scripts won't invalidate binding generation cache.
-WORKDIR /opencascade.js/
-COPY src/patches ./src/patches
-COPY src/filter ./src/filter
-COPY src/emscripten_fix ./src/emscripten_fix
-COPY src/undef_macros.h ./src/undef_macros.h
-
-RUN \
-  mkdir -p /opencascade.js/build/ && \
-  mkdir -p /opencascade.js/dist/
-
-# Generate Standard_Version.hxx (normally created by CMake, needed for compilation)
+# Generate Standard_Version.hxx (normally created by CMake)
 RUN \
   sed -e 's/@OCC_VERSION_MAJOR@/8/g' \
       -e 's/@OCC_VERSION_MINOR@/0/g' \
@@ -72,25 +56,34 @@ RUN \
       /occt/adm/templates/Standard_Version.hxx.in \
       > /occt/src/FoundationClasses/TKernel/Standard/Standard_Version.hxx
 
-# Apply patches
-RUN \
-  cd / && \
-  for patch in /opencascade.js/src/patches/*.patch; do \
-    echo "Applying patch: ${patch}" && \
-    patch -p0 < "${patch}" || { echo "FAILED: ${patch}"; exit 1; }; \
-  done
+ARG threading=single-threaded
+ENV threading=${threading}
 
-# ── Layer 2: binding generation (changes when filter scripts change) ──
-COPY src/generateBindings.py src/bindings.py src/Common.py ./src/
+WORKDIR /opencascade.js/
+RUN mkdir -p /opencascade.js/build/ /opencascade.js/dist/
+
+# ── Layer 1: Patches (standalone, no src/ imports) ───────────────────
+COPY src/applyPatches.py ./src/applyPatches.py
+RUN python3 /opencascade.js/src/applyPatches.py
+
+# ── Layer 2: Filters + Common (changes rarely after V8 stabilizes) ───
+COPY src/filter ./src/filter
+COPY src/Common.py src/TuInfo.py ./src/
 COPY src/wasmGenerator ./src/wasmGenerator
+
+# Build flat include directory (needed by all subsequent steps)
+RUN cd /opencascade.js/src && python3 -c "from Common import buildFlatIncludes; buildFlatIncludes()"
+
+# ── Layer 3: Binding generation (changes when generator logic changes)
+COPY src/generateBindings.py src/bindings.py ./src/
 
 RUN /opencascade.js/src/generateBindings.py
 
-# ── Layer 3: compilation (changes when compile scripts change) ────────
-COPY src/compileBindings.py src/compileSources.py ./src/
+# Build PCH (after bindings exist, before compilation)
+RUN cd /opencascade.js/src && python3 -c "from Common import buildPch; buildPch('${threading}')"
 
-# Pre-build essential LTO sysroot libraries (avoids 30+ min on-demand build at link time)
-RUN embuilder build libc libc++ libc++abi libdlmalloc --lto
+# ── Layer 4: Compilation (changes when compile scripts change) ───────
+COPY src/compileBindings.py src/compileSources.py ./src/
 
 RUN \
   /opencascade.js/src/compileBindings.py ${threading} && \
@@ -98,9 +91,9 @@ RUN \
   chmod -R 777 /opencascade.js/ && \
   chmod -R 777 /occt
 
-# ── Layer 4: link scripts (changes most frequently) ──────────────────
+# ── Layer 5: Link scripts (changes most often, <1s rebuild) ─────────
 COPY src/buildFromYaml.py src/customBuildSchema.py ./src/
-COPY src/build-wasm.sh src/build-native.sh src/setup-pch.sh src/listIncludes.py ./src/
+COPY src/build-wasm.sh src/build-native.sh ./src/
 
 WORKDIR /src/
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]

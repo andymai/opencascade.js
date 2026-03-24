@@ -503,6 +503,17 @@ def filterClass(theClass, additionalInfo=None):
     "StepData_StepReaderData", "TColStd_PackedMapOfInteger",
     "TopAbs", "V3d",
     "STEPCAFControl_GDTProperty",
+
+    # V8: binding compilation failures (libclang misparse, protected members, missing types)
+    "ApproxInt_KnotTools", "BOPAlgo_Tools", "BOPDS_DS", "BRepLib_FuseEdges",
+    "BRepMesh_ConstrainedBaseMeshAlgo", "GeomInt_IntSS", "IntPatch_Intersection",
+    "STEPConstruct_Styles",
+    "StepToTopoDS_NMTool", "StepToTopoDS_Tool",
+    "TopOpeBRepBuild_CorrectFace2d", "TopOpeBRepDS_GapFiller",
+    "TopOpeBRepTool", "TopOpeBRepTool_CORRISO", "TopOpeBRepTool_FuseEdges",
+    "Transfer_ActorOfFinderProcess", "Transfer_ActorOfTransientProcess",
+    "Transfer_MapContainer", "Transfer_ResultFromTransient",
+    "XCAFDimTolObjects_Tool", "XCAFDoc_DimTolTool", "XCAFDoc_Editor", "XCAFPrs_Texture",
   ]:
     return False
 
