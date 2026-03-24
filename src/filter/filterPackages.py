@@ -100,9 +100,6 @@ def filterPackages(packageName):
 
     "XBRepMesh", # This leads to a naming clash with BRepMesh
 
-    ## Module Deprecated — broken transitive includes (BOPDS_ListOfPaveBlock etc.)
-    ## Required typedefs (TColgp_Array1OfPnt, etc.) are in additionalCppCode instead
-    "NCollectionAliases",
   ]:
     return False
 
