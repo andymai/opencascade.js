@@ -90,7 +90,7 @@ RUN /opencascade.js/src/generateBindings.py
 COPY src/compileBindings.py src/compileSources.py ./src/
 
 # Pre-build essential LTO sysroot libraries (avoids 30+ min on-demand build at link time)
-RUN embuilder build libc libc++ libc++abi compiler-rt libdlmalloc libGL libfetch libhtml5 --lto
+RUN embuilder build libc libc++ libc++abi libdlmalloc --lto
 
 RUN \
   /opencascade.js/src/compileBindings.py ${threading} && \
