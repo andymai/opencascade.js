@@ -89,4 +89,5 @@ RUN \
 COPY src/buildFromYaml.py src/customBuildSchema.py ./src/
 COPY src/build-wasm.sh src/build-native.sh src/setup-pch.sh src/listIncludes.py ./src/
 
+WORKDIR /src/
 ENTRYPOINT ["/opencascade.js/src/buildFromYaml.py"]
