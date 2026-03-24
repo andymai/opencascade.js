@@ -33,7 +33,7 @@ RUN \
 
 WORKDIR /rapidjson/
 RUN \
-  git clone --depth 1 -b v1.1.0 https://github.com/Tencent/rapidjson.git .
+  git clone --depth 1 -b master https://github.com/Tencent/rapidjson.git .
 
 WORKDIR /freetype/
 RUN \
