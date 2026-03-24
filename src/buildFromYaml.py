@@ -73,7 +73,8 @@ def compileMissingBindings(bindings):
       continue
     cppFile = findBindingCpp(binding)
     if cppFile is None:
-      raise Exception("Requested binding " + json.dumps(binding) + " does not exist!")
+      print("WARNING: binding " + binding["symbol"] + " has no generated .cpp, skipping")
+      continue
     print("Compiling missing binding: " + binding["symbol"])
     patchBindingCpp(cppFile)
     command = [
