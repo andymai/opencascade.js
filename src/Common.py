@@ -7,10 +7,9 @@ occtBasePath = "/occt/src/"
 def getGlobalIncludes() -> Set[str]:
   includeFiles = list()
   additionalIncludePaths = list()
-  # Directories to exclude from include paths (broken transitive includes in V8)
-  excludeDirs = {"GTests", "NCollectionAliases"}
+  # Exclude GTests directories from include paths (not needed for binding/compilation)
+  excludeDirs = {"GTests"}
   for dirpath, dirnames, filenames in os.walk(occtBasePath):
-    # Prune excluded directories from the walk
     dirnames[:] = [d for d in dirnames if d not in excludeDirs]
     additionalIncludePaths.append(str(dirpath))
     for item in filenames:
