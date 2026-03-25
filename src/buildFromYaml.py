@@ -96,12 +96,14 @@ def runBuild(build, libraryBasePath):
         continue
       if item.endswith(".o"):
         sourcesO.append(dirpath + "/" + item)
+  symbolDisposeJs = os.path.join(os.path.dirname(__file__), "patches", "symbol_dispose.js")
   linkCmd = [
     "emcc", "-lembind",
     *([additionalBindCodeO] if additionalBindCodeO else []),
     *bindingsO, *sourcesO,
     "-o", os.getcwd() + "/" + build["name"],
     *(["-pthread"] if os.environ["threading"] == "multi-threaded" else []),
+    "--post-js", symbolDisposeJs,
     *build["emccFlags"],
   ]
   print(f"Linking {len(bindingsO)} bindings + {len(sourcesO)} sources ...", flush=True)

@@ -97,6 +97,7 @@ RUN \
 
 # ── Layer 5: Link scripts (changes most often, <1s rebuild) ─────────
 COPY src/buildFromYaml.py src/customBuildSchema.py ./src/
+COPY src/patches ./src/patches
 COPY src/build-wasm.sh src/build-native.sh ./src/
 
 WORKDIR /src/

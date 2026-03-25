@@ -594,6 +594,7 @@ class TypescriptBindings(Bindings):
   def processFinalizeClass(self):
     output = ""
     output += "  delete(): void;\n"
+    output += "  [Symbol.dispose](): void;\n"
     output += "}\n\n"
     return output
 
