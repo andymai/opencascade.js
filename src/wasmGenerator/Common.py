@@ -79,13 +79,27 @@ def getOutputParamDefaultValue(param):
     return 'false'
   return '0'
 
-def getMethodOverloadPostfix(theClass, method, children = None):
+def getMethodOverloadPostfix(theClass, method, children = None, arityBased = True):
   if children == None:
-    children = theClass.get_children() 
+    children = theClass.get_children()
   allOverloads = [m for m in children if m.spelling == method.spelling]
-  overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(method) + 1)
+  numOverloads = len(allOverloads)
 
-  return [overloadPostfix, len(allOverloads)]
+  if numOverloads <= 1:
+    return ["", numOverloads]
+
+  if arityBased:
+    # Check if all overloads have unique arities (different param counts)
+    arities = [len(list(m.get_arguments())) for m in allOverloads]
+    allUniqueArities = len(arities) == len(set(arities))
+
+    if allUniqueArities:
+      # No suffix needed — Embind dispatches by argument count at runtime
+      return ["", numOverloads]
+
+  # Same-arity collisions or arity-based disabled — keep _N suffix
+  overloadPostfix = "_" + str(allOverloads.index(method) + 1)
+  return [overloadPostfix, numOverloads]
 
 def ignoreDuplicateTypedef(typedef):
   if typedef.underlying_typedef_type.spelling in [

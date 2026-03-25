@@ -811,7 +811,7 @@ class TypescriptBindings(Bindings):
     allOverloadedConstructors = []
 
     for constructor in filter(lambda x: filterMethodOrProperty(theClass, x), constructors):
-      [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, constructor, children)
+      [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, constructor, children, arityBased=False)
 
       argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x, "", templateDecl, templateArgs), list(constructor.get_arguments()))))
       name = getClassTypeName(theClass, templateDecl)
