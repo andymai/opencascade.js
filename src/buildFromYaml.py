@@ -138,7 +138,7 @@ def main():
   libraryBasePath = OCJS_ROOT + "/build"
 
   buildConfig = yaml.safe_load(open(args.filename, "r"))
-  schema = eval(open(OCJS_ROOT + "/src/customBuildSchema.py", "r").read())
+  from customBuildSchema import schema
   v = Validator(schema)
   if not v.validate(buildConfig, schema):
     raise Exception(v.errors)

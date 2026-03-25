@@ -1,4 +1,4 @@
-{
+schema = {
   "mainBuild": {
     "required": True,
     "type": "dict",
