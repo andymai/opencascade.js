@@ -7,6 +7,7 @@ RUN \
   build-essential \
   cmake \
   curl \
+  doxygen \
   git \
   libffi-dev \
   libgdbm-dev \
@@ -79,7 +80,7 @@ COPY src/wasmGenerator ./src/wasmGenerator
 RUN cd /opencascade.js/src && python3 -c "from Common import buildFlatIncludes; buildFlatIncludes()"
 
 # ── Layer 3: Binding generation (changes when generator logic changes)
-COPY src/generateBindings.py src/bindings.py ./src/
+COPY src/generateBindings.py src/bindings.py src/extract_docs.py ./src/
 
 RUN /opencascade.js/src/generateBindings.py
 

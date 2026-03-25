@@ -1,4 +1,6 @@
 import clang.cindex
+import json
+import os
 import re
 
 from wasmGenerator.Common import SkipException, isAbstractClass, getMethodOverloadPostfix, isOutputParam, getOutputParamDefaultValue
@@ -586,6 +588,8 @@ class EmbindBindings(Bindings):
     return output
 
 class TypescriptBindings(Bindings):
+  _docs_cache = None
+
   def __init__(
     self,
     tuInfo
@@ -594,6 +598,36 @@ class TypescriptBindings(Bindings):
     self.imports = {}
 
     self.exports = []
+
+  @staticmethod
+  def _load_docs():
+    if TypescriptBindings._docs_cache is not None:
+      return TypescriptBindings._docs_cache
+    docs_path = os.path.join(os.path.dirname(__file__), "..", "build", "occt-docs.json")
+    if os.path.isfile(docs_path):
+      with open(docs_path) as f:
+        TypescriptBindings._docs_cache = json.load(f)
+    else:
+      TypescriptBindings._docs_cache = {}
+    return TypescriptBindings._docs_cache
+
+  def _jsdoc(self, class_name, method_name=None):
+    """Generate JSDoc comment string from cached Doxygen docs."""
+    docs = self._load_docs()
+    cls = docs.get(class_name, {})
+    if method_name:
+      member = cls.get("members", {}).get(method_name, {})
+      doc = member.get("doc", "")
+    else:
+      doc = cls.get("doc", "")
+    if not doc:
+      return ""
+    lines = doc.split("\n")
+    jsdoc = "  /**\n"
+    for line in lines:
+      jsdoc += f"   * {line}\n"
+    jsdoc += "   */\n"
+    return jsdoc
 
   def _findBoundAncestor(self, theClass):
     """Walk the inheritance chain to find the nearest ancestor that is in the build.
@@ -644,6 +678,9 @@ class TypescriptBindings(Bindings):
             baseClassDefinition = " extends " + directBase
 
     name = getClassTypeName(theClass, templateDecl)
+    classDoc = self._jsdoc(name)
+    if classDoc:
+      output += classDoc
     output += "export declare class " + name + baseClassDefinition + " {\n"
     self.exports.append(name)
 
@@ -766,6 +803,11 @@ class TypescriptBindings(Bindings):
   def processMethodOrProperty(self, theClass, method, templateDecl = None, templateArgs = None):
     output = ""
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
+      className = getClassTypeName(theClass, templateDecl)
+      methodDoc = self._jsdoc(className, method.spelling)
+      if methodDoc:
+        output += methodDoc
+
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
 
       allArgs = list(method.get_arguments())

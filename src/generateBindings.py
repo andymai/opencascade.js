@@ -217,6 +217,17 @@ if __name__ == "__main__":
   except Exception:
     pass
 
+  # Extract Doxygen documentation if not already cached
+  import subprocess, sys
+  docs_json = os.path.join(buildDirectory, "occt-docs.json")
+  if not os.path.exists(docs_json):
+    extract_script = os.path.join(os.path.dirname(__file__), "extract_docs.py")
+    if os.path.exists(extract_script):
+      try:
+        subprocess.run([sys.executable, extract_script], check=True)
+      except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Warning: Doxygen doc extraction failed ({e}), continuing without docs")
+
   tuInfo = TuInfo("")
 
   embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs
