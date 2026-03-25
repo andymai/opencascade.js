@@ -53,13 +53,59 @@ def shouldProcessClass(child, headerFiles, filterClass):
     
   return False
 
-def getMethodOverloadPostfix(theClass, method, children = None):
-  if children == None:
-    children = theClass.get_children() 
-  allOverloads = [m for m in children if m.spelling == method.spelling]
-  overloadPostfix = "" if (not len(allOverloads) > 1) else "_" + str(allOverloads.index(method) + 1)
+PRIMITIVE_OUTPUT_TYPES = frozenset({
+  'Standard_Real', 'Standard_Integer', 'Standard_Boolean',
+  'Standard_ShortReal', 'Standard_Character',
+  'double', 'int', 'float', 'bool',
+  'short', 'long', 'unsigned int', 'unsigned long',
+})
 
-  return [overloadPostfix, len(allOverloads)]
+def isOutputParam(param):
+  """Detect non-const lvalue reference parameters to primitive types (output params)."""
+  paramType = param.type
+  if paramType.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+    pointee = paramType.get_pointee()
+    if not pointee.is_const_qualified():
+      canonical = pointee.get_canonical().spelling
+      if canonical in PRIMITIVE_OUTPUT_TYPES:
+        return True
+  return False
+
+def getOutputParamDefaultValue(param):
+  """Return a C++ default value for an output parameter type."""
+  pointee = param.type.get_pointee()
+  canonical = pointee.get_canonical().spelling
+  if canonical in ('bool', 'Standard_Boolean'):
+    return 'false'
+  return '0'
+
+def getMethodOverloadPostfix(theClass, method, children = None, arityBased = True):
+  if children is None:
+    children = theClass.get_children()
+  allOverloads = [m for m in children if m.spelling == method.spelling]
+  numOverloads = len(allOverloads)
+
+  if numOverloads <= 1:
+    return ["", numOverloads]
+
+  if arityBased:
+    # Check if all overloads have unique JS-visible arities.
+    # Output params (non-const ref to primitives) are stripped from the JS
+    # signature, so we must use the adjusted arity for collision detection.
+    def jsArity(m):
+      args = list(m.get_arguments())
+      return sum(1 for a in args if not isOutputParam(a))
+
+    arities = [jsArity(m) for m in allOverloads]
+    allUniqueArities = len(arities) == len(set(arities))
+
+    if allUniqueArities:
+      # No suffix needed — Embind dispatches by argument count at runtime
+      return ["", numOverloads]
+
+  # Same-arity collisions or arity-based disabled — keep _N suffix
+  overloadPostfix = "_" + str(allOverloads.index(method) + 1)
+  return [overloadPostfix, numOverloads]
 
 def ignoreDuplicateTypedef(typedef):
   if typedef.underlying_typedef_type.spelling in [

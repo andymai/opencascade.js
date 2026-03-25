@@ -7,6 +7,7 @@ RUN \
   build-essential \
   cmake \
   curl \
+  doxygen \
   git \
   libffi-dev \
   libgdbm-dev \
@@ -59,8 +60,8 @@ RUN \
 ARG threading=single-threaded
 ENV threading=${threading}
 
-# Compile-time optimization: -Os + LTO (size-optimized; defaults were -O0/no LTO)
-ENV OCJS_OPT="-Os"
+# Compile-time optimization: -O2 + LTO (benchmarked 10% faster than -Os+LTO)
+ENV OCJS_OPT="-O2"
 ENV OCJS_LTO="1"
 
 WORKDIR /opencascade.js/
@@ -79,7 +80,7 @@ COPY src/wasmGenerator ./src/wasmGenerator
 RUN cd /opencascade.js/src && python3 -c "from Common import buildFlatIncludes; buildFlatIncludes()"
 
 # ── Layer 3: Binding generation (changes when generator logic changes)
-COPY src/generateBindings.py src/bindings.py ./src/
+COPY src/generateBindings.py src/bindings.py src/extract_docs.py ./src/
 
 RUN /opencascade.js/src/generateBindings.py
 
@@ -97,6 +98,7 @@ RUN \
 
 # ── Layer 5: Link scripts (changes most often, <1s rebuild) ─────────
 COPY src/buildFromYaml.py src/customBuildSchema.py ./src/
+COPY src/patches ./src/patches
 COPY src/build-wasm.sh src/build-native.sh ./src/
 
 WORKDIR /src/
