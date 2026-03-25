@@ -55,7 +55,7 @@ def compileCustomCodeBindings(args):
   for dirpath, dirnames, filenames in os.walk(libraryBasePath + "/myMain.h"):
     filesToBuild.extend(map(lambda x: dirpath + "/" + x, filter(lambda x: x.endswith(".cpp"), filenames)))
 
-  with multiprocessing.Pool(processes=int(multiprocessing.cpu_count() / 1)) as p:
+  with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as p:
     p.map(partial(buildOneFile, args), sorted(filesToBuild))
 
 def _is_filtered_binding(filepath):
