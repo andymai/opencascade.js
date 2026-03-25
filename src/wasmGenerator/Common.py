@@ -52,7 +52,7 @@ def getOutputParamDefaultValue(param):
     return 'false'
   return '0'
 
-def getMethodOverloadPostfix(theClass, method, children = None, arityBased = True):
+def getMethodOverloadPostfix(theClass, method, children = None, arityBased = False):
   if children is None:
     children = theClass.get_children()
   allOverloads = [m for m in children if m.spelling == method.spelling]
