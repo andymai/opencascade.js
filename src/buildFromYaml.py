@@ -36,10 +36,7 @@ def shouldProcessSymbol(symbol: str, bindings) -> bool:
 def runBuild(build, libraryBasePath):
   def getAdditionalBindCodeO():
     if "additionalBindCode" in build:
-      try:
-        os.mkdir(libraryBasePath + "/additionalBindCode")
-      except Exception:
-        pass
+      os.makedirs(libraryBasePath + "/additionalBindCode", exist_ok=True)
       additionalBindCodeFileName = libraryBasePath + "/additionalBindCode/" + build["name"] + ".cpp"
       f = open(additionalBindCodeFileName, "w")
       f.write(build["additionalBindCode"])
@@ -144,10 +141,8 @@ def main():
     raise Exception(v.errors)
   buildConfig = v.normalized(buildConfig)
 
-  try:
+  if os.path.isdir(libraryBasePath + "/bindings/myMain.h"):
     shutil.rmtree(libraryBasePath + "/bindings/myMain.h")
-  except Exception:
-    pass
 
   print("Generating custom code bindings...", flush=True)
   generateCustomCodeBindings(buildConfig["additionalCppCode"])

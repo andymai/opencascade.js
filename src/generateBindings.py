@@ -200,10 +200,7 @@ referenceTypeTemplateDefs = \
   "\n"
 
 def generateCustomCodeBindings(customCode):
-  try:
-    os.makedirs(libraryBasePath)
-  except Exception:
-    pass
+  os.makedirs(libraryBasePath, exist_ok=True)
 
   embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs + "\n" + customCode
 
@@ -212,10 +209,7 @@ def generateCustomCodeBindings(customCode):
   process(tuInfo, ".d.ts.json", typescriptGenerationFuncClasses, typescriptGenerationFuncTemplates, typescriptGenerationFuncEnums, "", True)
 
 if __name__ == "__main__":
-  try:
-    os.makedirs(libraryBasePath)
-  except Exception:
-    pass
+  os.makedirs(libraryBasePath, exist_ok=True)
 
   # Extract Doxygen documentation if not already cached
   import subprocess, sys
