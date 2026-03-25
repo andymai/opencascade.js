@@ -59,8 +59,8 @@ RUN \
 ARG threading=single-threaded
 ENV threading=${threading}
 
-# Compile-time optimization: -Os + LTO (size-optimized; defaults were -O0/no LTO)
-ENV OCJS_OPT="-Os"
+# Compile-time optimization: -O2 + LTO (benchmarked 10% faster than -Os+LTO)
+ENV OCJS_OPT="-O2"
 ENV OCJS_LTO="1"
 
 WORKDIR /opencascade.js/
