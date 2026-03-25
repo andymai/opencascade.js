@@ -186,12 +186,7 @@ def _get_safe_deprecated_headers():
   safe = []
   for h in sorted(ocDeprecatedIncludeFiles):
     base = os.path.basename(h)
-    if any(base.startswith(p) for p in [
-      "TColgp_", "TColStd_Array", "TColStd_HArray",
-      "TColStd_List", "TColStd_Sequence",
-      "TopTools_", "Poly_Array", "Poly_HArray",
-      "NCollection_BaseList",
-    ]):
+    if any(base.startswith(p) for p in _SAFE_DEPRECATED_PREFIXES):
       safe.append(h)
   return safe
 
