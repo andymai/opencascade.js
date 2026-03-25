@@ -14,7 +14,6 @@ Module['postRun'].push(function() {
     // Embind enums have a 'values' object whose members each have a numeric .value
     if (obj && typeof obj === 'object' && obj.values && typeof obj.values === 'object') {
       var names = Object.keys(obj.values);
-      if (names.length === 0) return;
       // Verify this is actually an enum (first member has numeric .value)
       var first = obj.values[names[0]];
       if (!first || typeof first.value !== 'number') return;

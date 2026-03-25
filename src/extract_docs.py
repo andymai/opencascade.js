@@ -82,17 +82,13 @@ def parse_xml():
 
 
 def _text(element):
-    """Extract plain text from a Doxygen XML element."""
+    """Extract normalised plain text from a Doxygen XML element."""
     if element is None:
         return ""
     return " ".join("".join(element.itertext()).split()).strip()
 
 
-def _type_text(element):
-    """Extract type text from a Doxygen <type> element."""
-    if element is None:
-        return ""
-    return " ".join("".join(element.itertext()).split()).strip()
+_type_text = _text
 
 
 def main():

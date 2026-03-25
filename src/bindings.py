@@ -107,7 +107,6 @@ class Bindings:
     if not templateArgs:
       return resolved
 
-    import re
     if Bindings._TYPE_PARAM_RE is None:
       Bindings._TYPE_PARAM_RE = re.compile(r'type-parameter-(\d+)-(\d+)')
 
@@ -644,23 +643,17 @@ class TypescriptBindings(Bindings):
     return TypescriptBindings._docs_cache
 
   def _jsdoc(self, class_name, method_name=None, indent_level=1):
-    """Generate JSDoc comment string from cached Doxygen docs."""
+    """Generate a single-line JSDoc comment from cached Doxygen docs."""
     docs = self._load_docs()
     cls = docs.get(class_name, {})
     if method_name:
-      member = cls.get("members", {}).get(method_name, {})
-      doc = member.get("doc", "")
+      doc = cls.get("members", {}).get(method_name, {}).get("doc", "")
     else:
       doc = cls.get("doc", "")
     if not doc:
       return ""
-    pad = "  " * indent_level
-    lines = doc.split("\n")
-    jsdoc = f"{pad}/**\n"
-    for line in lines:
-      jsdoc += f"{pad} * {line}\n"
-    jsdoc += f"{pad} */\n"
-    return jsdoc
+    pad = indent(indent_level)
+    return f"{pad}/** {doc} */\n"
 
   def _findBoundAncestor(self, theClass):
     """Walk the inheritance chain to find the nearest ancestor that is in the build.
@@ -855,7 +848,7 @@ class TypescriptBindings(Bindings):
         inputArgs = [(i, arg) for i, arg in enumerate(allArgs) if not outputParamFlags[i]]
         outputArgs = [(i, arg) for i, arg in enumerate(allArgs) if outputParamFlags[i]]
 
-        tsInputArgs = ", ".join([self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs) for i, arg in inputArgs])
+        tsArgs = ", ".join([self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs) for i, arg in inputArgs])
 
         # Build return type: { result: ReturnType; ParamName: ParamType; ... }
         returnParts = []
@@ -869,12 +862,11 @@ class TypescriptBindings(Bindings):
           returnParts.append(f"{argName}: {tsType}")
 
         returnType = "{ " + "; ".join(returnParts) + " }"
-        output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + tsInputArgs + "): " + returnType + ";\n"
       else:
-        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        tsArgs = ", ".join([self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs) for i, arg in enumerate(allArgs)])
         returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
 
-        output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
+      output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + tsArgs + "): " + returnType + ";\n"
     return output
 
   def processOverloadedConstructors(self, theClass, children = None, templateDecl = None, templateArgs = None):
