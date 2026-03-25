@@ -582,11 +582,12 @@ class TypescriptBindings(Bindings):
     for child in theClass.get_children():
       if child.kind == clang.cindex.CursorKind.ENUM_DECL and child.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and child.spelling != "" and child.spelling.isidentifier():
         enumName = name + "_" + child.spelling
+        memberNames = [ec.spelling for ec in child.get_children() if ec.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL]
         output += "export declare type " + enumName + " = {\n"
-        for enumChild in list(child.get_children()):
-          if enumChild.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL:
-            output += "  " + enumChild.spelling + ": {};\n"
+        for mn in memberNames:
+          output += "  " + mn + ": " + enumName + "Value;\n"
         output += "}\n\n"
+        output += "export declare type " + enumName + "Value = " + " | ".join(["'" + n + "'" for n in memberNames]) + ";\n\n"
         self.exports.append(enumName)
 
     return output
@@ -729,10 +730,18 @@ class TypescriptBindings(Bindings):
 
   def processEnum(self, theEnum):
     output = ""
+    enumChildren = [c for c in theEnum.get_children() if c.kind == clang.cindex.CursorKind.ENUM_CONSTANT_DECL]
+    memberNames = [c.spelling for c in enumChildren]
+
+    # Emit enum as an object type with string-valued members
     bindingsOutput = "export declare type " + theEnum.spelling + " = {\n"
-    for enumChild in list(theEnum.get_children()):
-      bindingsOutput += "  " + enumChild.spelling + ": {};\n"
+    for name in memberNames:
+      bindingsOutput += "  " + name + ": " + theEnum.spelling + "Value;\n"
     bindingsOutput += "}\n\n"
+
+    # Emit a branded string type for enum values
+    bindingsOutput += "export declare type " + theEnum.spelling + "Value = " + " | ".join(["'" + n + "'" for n in memberNames]) + ";\n\n"
+
     output += bindingsOutput
     self.exports.append(theEnum.spelling)
     return output
