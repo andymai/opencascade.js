@@ -34,36 +34,36 @@ def _parse_packages_cmake(filepath):
         packages.append(name)
   return packages
 
-# Single walk to build: allModules, packageToModule reverse map, filesToBuild
-allModules = {}
-_packageToModule = {}
-filesToBuild = []
+def _discover_source_files():
+  """Walk OCCT source tree to build module map and file list."""
+  allModules = {}
+  packageToModule = {}
+  filesToBuild = []
 
-for dirpath, dirnames, filenames in os.walk(sourceBasePath):
-  dirName = os.path.basename(dirpath)
-  if dirName and not filterPackages(dirName):
-    dirnames.clear()
-    continue
-
-  if "PACKAGES.cmake" in filenames:
-    toolkit_name = dirName
-    packages = _parse_packages_cmake(os.path.join(dirpath, "PACKAGES.cmake"))
-    allModules[toolkit_name] = packages
-    for pkg in packages:
-      _packageToModule[pkg.strip()] = toolkit_name
-
-  packageOrModuleName = os.path.basename(dirpath.replace(sourceBasePath, ""))
-  for item in filenames:
-    if not filterPackages(packageOrModuleName):
+  for dirpath, dirnames, filenames in os.walk(sourceBasePath):
+    dirName = os.path.basename(dirpath)
+    if dirName and not filterPackages(dirName):
+      dirnames.clear()
       continue
-    moduleName = _packageToModule.get(packageOrModuleName, "")
-    if moduleName and not filterPackages(moduleName):
-      continue
-    if filterSourceFile(os.path.join(dirpath, item)):
-      filesToBuild.append(os.path.join(dirpath, item))
 
-def getModuleNameByPackageName(inputPackageName):
-  return _packageToModule.get(inputPackageName, "")
+    if "PACKAGES.cmake" in filenames:
+      toolkit_name = dirName
+      packages = _parse_packages_cmake(os.path.join(dirpath, "PACKAGES.cmake"))
+      allModules[toolkit_name] = packages
+      for pkg in packages:
+        packageToModule[pkg.strip()] = toolkit_name
+
+    packageOrModuleName = os.path.basename(dirpath.replace(sourceBasePath, ""))
+    for item in filenames:
+      if not filterPackages(packageOrModuleName):
+        continue
+      moduleName = packageToModule.get(packageOrModuleName, "")
+      if moduleName and not filterPackages(moduleName):
+        continue
+      if filterSourceFile(os.path.join(dirpath, item)):
+        filesToBuild.append(os.path.join(dirpath, item))
+
+  return allModules, packageToModule, filesToBuild
 
 def buildObjectFiles(args, file):
   relativeFile = file.replace(sourceBasePath, "")
@@ -112,6 +112,8 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   os.makedirs(libraryBasePath, exist_ok=True)
+
+  allModules, _packageToModule, filesToBuild = _discover_source_files()
 
   print(f"Using flat includes: {FLAT_INCLUDE_DIR}")
 
