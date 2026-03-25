@@ -17,6 +17,7 @@ def run_doxygen():
     """Run Doxygen on OCCT source to produce XML output."""
     doxyfile = os.path.join(BUILD_DIR, "Doxyfile.auto")
     os.makedirs(BUILD_DIR, exist_ok=True)
+    os.makedirs(os.path.join(DOXYGEN_XML, "xml"), exist_ok=True)
     with open(doxyfile, "w") as f:
         f.write(f"""
 PROJECT_NAME = OCCT
