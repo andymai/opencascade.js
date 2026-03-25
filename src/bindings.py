@@ -1,7 +1,7 @@
 import clang.cindex
 import re
 
-from wasmGenerator.Common import SkipException, isAbstractClass, getMethodOverloadPostfix
+from wasmGenerator.Common import SkipException, isAbstractClass, getMethodOverloadPostfix, isOutputParam, getOutputParamDefaultValue
 from filter.filterClasses import filterClass
 from filter.filterMethodOrProperties import filterMethodOrProperty
 from typing import Tuple, List
@@ -292,170 +292,240 @@ class EmbindBindings(Bindings):
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
 
-      def needsWrapper(type):
-        return (
-          type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
-            type.get_pointee().get_canonical().spelling in builtInTypes or
-            type.get_pointee().kind == clang.cindex.TypeKind.ENUM or
-            type.get_pointee().kind == clang.cindex.TypeKind.POINTER or (
-              theClass.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and
-              type.get_pointee().spelling in templateArgs and
-              templateArgs[type.get_pointee().spelling].get_canonical().spelling in builtInTypes
-            )
-          ) or (
-            type.get_canonical().kind == clang.cindex.TypeKind.POINTER and 
-            isCString(type)
-          )
-        )
-
       args = list(method.get_arguments())
-      argsNeedingWrapper = list(map(lambda arg: needsWrapper(arg.type), args))
-      returnNeedsWrapper = needsWrapper(method.result_type)
-      if any(argsNeedingWrapper) or returnNeedsWrapper:
-        def replaceTemplateArgs(x):
-          if templateArgs is not None and args[x[0]].type.get_pointee().spelling.replace("const ", "") in templateArgs:
-            return args[x[0]].type.spelling.replace(args[x[0]].type.get_pointee().spelling.replace("const ", ""), templateArgs[args[x[0]].type.get_pointee().spelling.replace("const ", "")].spelling)
-          else:
-            return args[x[0]].type.spelling
-        def getArgName(x):
-          return pick(
-            not args[x[0]].spelling == "",
-            args[x[0]].spelling,
-            f"argNo{str(x[0])}"
-          )
-        def getArgTypeName(type):
-          if templateArgs is not None and type.get_pointee().spelling.replace("const ", "") in templateArgs:
-            return type.get_pointee().spelling.replace(type.get_pointee().spelling.replace("const ", ""), templateArgs[type.get_pointee().spelling.replace("const ", "")].spelling)
-          else:
-            return type.get_pointee().spelling
+      outputParamFlags = [isOutputParam(arg) for arg in args]
+      hasOutputParams = any(outputParamFlags)
+
+      if hasOutputParams:
+        # Return-by-value wrapper: output params become local vars, results bundled in val::object()
         classTypeName = getClassTypeName(theClass, templateDecl)
-        wrappedParamTypes = merge(", ", *map(lambda x:
-          pick(
-            x[1],
-            "emscripten::val",
-            replaceTemplateArgs(x)
-          ),
-          enumerate(argsNeedingWrapper)
-        ))
-        wrappedParamTypesAndNames = merge(", ", *map(lambda x:
-          pick(
-            x[1],
-            f"emscripten::val {getArgName(x)}",
-            f"{replaceTemplateArgs(x)} {getArgName(x)}",
-          ), enumerate(argsNeedingWrapper)))
-        def generateGetReferenceValue(x):
-          if x[1] and not isCString(args[x[0]].type):
-            return (
-              merge("",
-                indent(4),
-                "auto ref_",
-                pick(not args[x[0]].spelling == "",
-                  args[x[0]].spelling,
-                  f"argNo{str(x[0])}"
-                ),
-                f" = getReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)});\n"
-              )
-            )
+        inputArgs = [(i, arg) for i, arg in enumerate(args) if not outputParamFlags[i]]
+        outputArgs = [(i, arg) for i, arg in enumerate(args) if outputParamFlags[i]]
+
+        # Build input param types/names for the lambda signature
+        inputParamParts = []
+        inputParamNamedParts = []
+        for i, arg in inputArgs:
+          argType = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
+          argName = arg.spelling if arg.spelling else f"argNo{i}"
+          if isCString(arg.type):
+            argType = "std::string"
+          inputParamParts.append(argType)
+          inputParamNamedParts.append(f"{argType} {argName}")
+
+        # Lambda signature
+        selfParam = f"{classTypeName}& that" if not method.is_static_method() else ""
+        allLambdaParams = ([selfParam] if selfParam else []) + inputParamNamedParts
+        allLambdaTypes = ([f"{classTypeName}&"] if not method.is_static_method() else []) + inputParamParts
+
+        # Output param local variable declarations
+        localVarDecls = ""
+        for i, arg in outputArgs:
+          pointee = arg.type.get_pointee()
+          typeName = pointee.get_canonical().spelling
+          varName = arg.spelling if arg.spelling else f"argNo{i}"
+          defaultVal = getOutputParamDefaultValue(arg)
+          localVarDecls += f"{indent(4)}{typeName} {varName} = {defaultVal};\n"
+
+        # Invocation args (in original order)
+        invocationArgs = []
+        for i, arg in enumerate(args):
+          argName = arg.spelling if arg.spelling else f"argNo{i}"
+          if outputParamFlags[i]:
+            invocationArgs.append(argName)
+          elif isCString(arg.type):
+            invocationArgs.append(f"{argName}.c_str()")
           else:
-            return ""
-        def generateUpdateReferenceValue(x):
-          if x[1] and not isCString(args[x[0]].type):
-            return  f"{indent(4)}updateReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)}, ref_{getArgName(x)});\n"
-          else:
-            return ""
-        def generateInvocationArgs(x):
-          if x[1]:
-            if not isCString(args[x[0]].type):
-              return f"ref_{getArgName(x)}"
-            else:
-              if not args[x[0]].type.get_canonical().get_pointee().is_const_qualified() or args[x[0]].type.is_const_qualified():
-                return f"{getArgName(x)}.isNull() ? nullptr : strdup({getArgName(x)}.as<std::string>().c_str())"
-              else:
-                return f"{getArgName(x)}.isNull() ? nullptr : {getArgName(x)}.as<std::string>().c_str()"
-          else:
-            return getArgName(x)
-        resultTypeSpelling = \
-          pick(returnNeedsWrapper, "emscripten::val", self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs))
-        functionBindingHead = \
-          merge("",
-            "\n",
-            indent(3),
-            pickWrap(not method.is_static_method(),
-              [f"std::function<{resultTypeSpelling}(", f"(({resultTypeSpelling} (*)("],
-              merge("",
-                pick(not method.is_static_method(), f"{classTypeName}&", ""),
-                pick(not method.is_static_method() and len(args) > 0, ", ", ""),
-                wrappedParamTypes,
-              ),
-              [")>(", "))"]
-            ),
-            merge("",
-              "[](",
-              pick(not method.is_static_method(), f"{classTypeName}& that", ""),
-              pick(not method.is_static_method() and len(args) > 0, ", ", ""),
-              wrappedParamTypesAndNames,
-              ")",
-            ),
-            f" -> {resultTypeSpelling} {{\n",
-            merge("", *map(lambda x: generateGetReferenceValue(x), enumerate(argsNeedingWrapper))),
-          )
-        functionBindingBody = \
-          merge("",
-            indent(4),
-            pick(
-              not method.result_type.spelling == "void",
-              merge("",
-                pick(not isCString(method.result_type) and (method.result_type.is_const_qualified() or method.result_type.get_pointee().is_const_qualified()), "const ", ""),
-                "auto",
-                pick(not isCString(method.result_type) and method.result_type.kind == clang.cindex.TypeKind.LVALUEREFERENCE, "& ", " "),
-                "ret = ",
-              ),
-              ""
-            ),
-            merge("",
-              pick(not method.is_static_method(), "that.", f"{className}::"),
-              f'{method.spelling}({merge(", ", *map(lambda x: generateInvocationArgs(x), enumerate(argsNeedingWrapper)))})',
-            ),
-            ";\n",
-            merge("", *map(lambda x: generateUpdateReferenceValue(x), enumerate(argsNeedingWrapper))),
-            pick(
-              method.result_type.spelling == "void",
-              "",
-              pick(
-                returnNeedsWrapper,
-                pick(
-                  method.result_type.kind == clang.cindex.TypeKind.POINTER,
-                  merge("",
-                    indent(4),
-                    "return ret == nullptr ? emscripten::val::null() : emscripten::val(static_cast<",
-                      pick(isCString(method.result_type), "std::string", self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs)),
-                    ">(ret));\n",
-                  ),
-                  f"{indent(4)}return emscripten::val(ret);\n",
-                ),
-                f"{indent(4)}return ret;\n",
-              ),
-            ),
-          )
-        functionBinding = \
-          merge("",
-            functionBindingHead,
-            functionBindingBody,
-            f"{indent(3)}}}\n",
-            f"{indent(2)})",
-          )
+            invocationArgs.append(argName)
+
+        caller = "that." if not method.is_static_method() else f"{className}::"
+        hasResult = method.result_type.spelling != "void"
+
+        # Build the return val::object()
+        returnBlock = f"{indent(4)}auto retObj = emscripten::val::object();\n"
+        if hasResult:
+          returnBlock += f"{indent(4)}retObj.set(\"result\", ret);\n"
+        for i, arg in outputArgs:
+          argName = arg.spelling if arg.spelling else f"argNo{i}"
+          returnBlock += f"{indent(4)}retObj.set(\"{argName}\", {argName});\n"
+        returnBlock += f"{indent(4)}return retObj;\n"
+
+        functionBinding = merge("",
+          "\n",
+          indent(3),
+          f"std::function<emscripten::val({', '.join(allLambdaTypes)})>(",
+          f"[]({', '.join(allLambdaParams)}) -> emscripten::val {{\n",
+          localVarDecls,
+          indent(4),
+          f"{'auto ret = ' if hasResult else ''}{caller}{method.spelling}({', '.join(invocationArgs)});\n",
+          returnBlock,
+          f"{indent(3)}}})",
+        )
       else:
-        if numOverloads == 1:
-          functionBinding = " &" + className + "::" + method.spelling
-        else:
-          functionBinding = merge("",
-            " select_overload<",
-            self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
-            f'({merge(", ", *map(lambda x: self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], list(method.get_arguments())))})',
-            pick(method.is_const_method(), "const", ""),
-            pick(not method.is_static_method(), f", {getClassTypeName(theClass, templateDecl)}", ""),
-            f">(&{className}::{method.spelling})",
+        # Original wrapper logic for non-output-param methods
+        def needsWrapper(type):
+          return (
+            type.kind == clang.cindex.TypeKind.LVALUEREFERENCE and (
+              type.get_pointee().get_canonical().spelling in builtInTypes or
+              type.get_pointee().kind == clang.cindex.TypeKind.ENUM or
+              type.get_pointee().kind == clang.cindex.TypeKind.POINTER or (
+                theClass.kind == clang.cindex.CursorKind.CLASS_TEMPLATE and
+                type.get_pointee().spelling in templateArgs and
+                templateArgs[type.get_pointee().spelling].get_canonical().spelling in builtInTypes
+              )
+            ) or (
+              type.get_canonical().kind == clang.cindex.TypeKind.POINTER and
+              isCString(type)
+            )
           )
+
+        argsNeedingWrapper = list(map(lambda arg: needsWrapper(arg.type), args))
+        returnNeedsWrapper = needsWrapper(method.result_type)
+        if any(argsNeedingWrapper) or returnNeedsWrapper:
+          def replaceTemplateArgs(x):
+            if templateArgs is not None and args[x[0]].type.get_pointee().spelling.replace("const ", "") in templateArgs:
+              return args[x[0]].type.spelling.replace(args[x[0]].type.get_pointee().spelling.replace("const ", ""), templateArgs[args[x[0]].type.get_pointee().spelling.replace("const ", "")].spelling)
+            else:
+              return args[x[0]].type.spelling
+          def getArgName(x):
+            return pick(
+              not args[x[0]].spelling == "",
+              args[x[0]].spelling,
+              f"argNo{str(x[0])}"
+            )
+          def getArgTypeName(type):
+            if templateArgs is not None and type.get_pointee().spelling.replace("const ", "") in templateArgs:
+              return type.get_pointee().spelling.replace(type.get_pointee().spelling.replace("const ", ""), templateArgs[type.get_pointee().spelling.replace("const ", "")].spelling)
+            else:
+              return type.get_pointee().spelling
+          classTypeName = getClassTypeName(theClass, templateDecl)
+          wrappedParamTypes = merge(", ", *map(lambda x:
+            pick(
+              x[1],
+              "emscripten::val",
+              replaceTemplateArgs(x)
+            ),
+            enumerate(argsNeedingWrapper)
+          ))
+          wrappedParamTypesAndNames = merge(", ", *map(lambda x:
+            pick(
+              x[1],
+              f"emscripten::val {getArgName(x)}",
+              f"{replaceTemplateArgs(x)} {getArgName(x)}",
+            ), enumerate(argsNeedingWrapper)))
+          def generateGetReferenceValue(x):
+            if x[1] and not isCString(args[x[0]].type):
+              return (
+                merge("",
+                  indent(4),
+                  "auto ref_",
+                  pick(not args[x[0]].spelling == "",
+                    args[x[0]].spelling,
+                    f"argNo{str(x[0])}"
+                  ),
+                  f" = getReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)});\n"
+                )
+              )
+            else:
+              return ""
+          def generateUpdateReferenceValue(x):
+            if x[1] and not isCString(args[x[0]].type):
+              return  f"{indent(4)}updateReferenceValue<{getArgTypeName(args[x[0]].type)}>({getArgName(x)}, ref_{getArgName(x)});\n"
+            else:
+              return ""
+          def generateInvocationArgs(x):
+            if x[1]:
+              if not isCString(args[x[0]].type):
+                return f"ref_{getArgName(x)}"
+              else:
+                if not args[x[0]].type.get_canonical().get_pointee().is_const_qualified() or args[x[0]].type.is_const_qualified():
+                  return f"{getArgName(x)}.isNull() ? nullptr : strdup({getArgName(x)}.as<std::string>().c_str())"
+                else:
+                  return f"{getArgName(x)}.isNull() ? nullptr : {getArgName(x)}.as<std::string>().c_str()"
+            else:
+              return getArgName(x)
+          resultTypeSpelling = \
+            pick(returnNeedsWrapper, "emscripten::val", self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs))
+          functionBindingHead = \
+            merge("",
+              "\n",
+              indent(3),
+              pickWrap(not method.is_static_method(),
+                [f"std::function<{resultTypeSpelling}(", f"(({resultTypeSpelling} (*)("],
+                merge("",
+                  pick(not method.is_static_method(), f"{classTypeName}&", ""),
+                  pick(not method.is_static_method() and len(args) > 0, ", ", ""),
+                  wrappedParamTypes,
+                ),
+                [")>(", "))"]
+              ),
+              merge("",
+                "[](",
+                pick(not method.is_static_method(), f"{classTypeName}& that", ""),
+                pick(not method.is_static_method() and len(args) > 0, ", ", ""),
+                wrappedParamTypesAndNames,
+                ")",
+              ),
+              f" -> {resultTypeSpelling} {{\n",
+              merge("", *map(lambda x: generateGetReferenceValue(x), enumerate(argsNeedingWrapper))),
+            )
+          functionBindingBody = \
+            merge("",
+              indent(4),
+              pick(
+                not method.result_type.spelling == "void",
+                merge("",
+                  pick(not isCString(method.result_type) and (method.result_type.is_const_qualified() or method.result_type.get_pointee().is_const_qualified()), "const ", ""),
+                  "auto",
+                  pick(not isCString(method.result_type) and method.result_type.kind == clang.cindex.TypeKind.LVALUEREFERENCE, "& ", " "),
+                  "ret = ",
+                ),
+                ""
+              ),
+              merge("",
+                pick(not method.is_static_method(), "that.", f"{className}::"),
+                f'{method.spelling}({merge(", ", *map(lambda x: generateInvocationArgs(x), enumerate(argsNeedingWrapper)))})',
+              ),
+              ";\n",
+              merge("", *map(lambda x: generateUpdateReferenceValue(x), enumerate(argsNeedingWrapper))),
+              pick(
+                method.result_type.spelling == "void",
+                "",
+                pick(
+                  returnNeedsWrapper,
+                  pick(
+                    method.result_type.kind == clang.cindex.TypeKind.POINTER,
+                    merge("",
+                      indent(4),
+                      "return ret == nullptr ? emscripten::val::null() : emscripten::val(static_cast<",
+                        pick(isCString(method.result_type), "std::string", self.getTypedefedTemplateTypeAsString(method.result_type.spelling, templateDecl, templateArgs)),
+                      ">(ret));\n",
+                    ),
+                    f"{indent(4)}return emscripten::val(ret);\n",
+                  ),
+                  f"{indent(4)}return ret;\n",
+                ),
+              ),
+            )
+          functionBinding = \
+            merge("",
+              functionBindingHead,
+              functionBindingBody,
+              f"{indent(3)}}}\n",
+              f"{indent(2)})",
+            )
+        else:
+          if numOverloads == 1:
+            functionBinding = " &" + className + "::" + method.spelling
+          else:
+            functionBinding = merge("",
+              " select_overload<",
+              self.resolveWithCanonicalFallback(method.result_type.spelling, method.result_type, templateDecl, templateArgs),
+              f'({merge(", ", *map(lambda x: self.getSingleArgumentBinding(True, True, templateDecl, templateArgs)(x)[0], list(method.get_arguments())))})',
+              pick(method.is_const_method(), "const", ""),
+              pick(not method.is_static_method(), f", {getClassTypeName(theClass, templateDecl)}", ""),
+              f">(&{className}::{method.spelling})",
+            )
 
       if method.is_static_method():
         functionCommand = "class_function"
@@ -698,10 +768,35 @@ class TypescriptBindings(Bindings):
     if method.access_specifier == clang.cindex.AccessSpecifier.PUBLIC and method.kind == clang.cindex.CursorKind.CXX_METHOD and not method.spelling.startswith("operator"):
       [overloadPostfix, numOverloads] = getMethodOverloadPostfix(theClass, method)
 
-      args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(method.get_arguments()))))
-      returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+      allArgs = list(method.get_arguments())
+      outputParamFlags = [isOutputParam(arg) for arg in allArgs]
+      hasOutputParams = any(outputParamFlags)
 
-      output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
+      if hasOutputParams:
+        # Only include non-output params in the TS signature
+        inputArgs = [(i, arg) for i, arg in enumerate(allArgs) if not outputParamFlags[i]]
+        outputArgs = [(i, arg) for i, arg in enumerate(allArgs) if outputParamFlags[i]]
+
+        tsInputArgs = ", ".join([self.getTypescriptDefFromArg(arg, i, templateDecl, templateArgs) for i, arg in inputArgs])
+
+        # Build return type: { result: ReturnType; ParamName: ParamType; ... }
+        returnParts = []
+        if method.result_type.spelling != "void":
+          resultType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+          returnParts.append(f"result: {resultType}")
+        for i, arg in outputArgs:
+          argName = arg.spelling if arg.spelling else f"argNo{i}"
+          pointeeType = arg.type.get_pointee().get_canonical().spelling
+          tsType = self.convertBuiltinTypes(pointeeType)
+          returnParts.append(f"{argName}: {tsType}")
+
+        returnType = "{ " + "; ".join(returnParts) + " }"
+        output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + tsInputArgs + "): " + returnType + ";\n"
+      else:
+        args = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x[1], x[0], templateDecl, templateArgs), enumerate(allArgs))))
+        returnType = self.getTypescriptDefFromResultType(method.result_type, templateDecl, templateArgs)
+
+        output += "  " + ("static " if method.is_static_method() else "") + method.spelling + overloadPostfix + "(" + args + "): " + returnType + ";\n"
     return output
 
   def processOverloadedConstructors(self, theClass, children = None, templateDecl = None, templateArgs = None):

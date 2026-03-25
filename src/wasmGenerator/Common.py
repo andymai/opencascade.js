@@ -53,6 +53,32 @@ def shouldProcessClass(child, headerFiles, filterClass):
     
   return False
 
+PRIMITIVE_OUTPUT_TYPES = frozenset({
+  'Standard_Real', 'Standard_Integer', 'Standard_Boolean',
+  'Standard_ShortReal', 'Standard_Character',
+  'double', 'int', 'float', 'bool',
+  'short', 'long', 'unsigned int', 'unsigned long',
+})
+
+def isOutputParam(param):
+  """Detect non-const lvalue reference parameters to primitive types (output params)."""
+  paramType = param.type
+  if paramType.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+    pointee = paramType.get_pointee()
+    if not pointee.is_const_qualified():
+      canonical = pointee.get_canonical().spelling
+      if canonical in PRIMITIVE_OUTPUT_TYPES:
+        return True
+  return False
+
+def getOutputParamDefaultValue(param):
+  """Return a C++ default value for an output parameter type."""
+  pointee = param.type.get_pointee()
+  canonical = pointee.get_canonical().spelling
+  if canonical in ('bool', 'Standard_Boolean'):
+    return 'false'
+  return '0'
+
 def getMethodOverloadPostfix(theClass, method, children = None):
   if children == None:
     children = theClass.get_children() 
