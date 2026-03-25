@@ -6,7 +6,7 @@ import clang.cindex
 import os
 import errno
 from wasmGenerator.Common import SkipException
-from Common import ocIncludeStatements
+from Common import ocIncludeStatements, ocAllIncludeStatements
 import json
 import os
 from filter.filterPackages import filterPackages
@@ -202,7 +202,9 @@ referenceTypeTemplateDefs = \
 def generateCustomCodeBindings(customCode):
   os.makedirs(libraryBasePath, exist_ok=True)
 
-  embindPreamble = ocIncludeStatements + "\n" + referenceTypeTemplateDefs + "\n" + customCode
+  # Use ocAllIncludeStatements (includes safe deprecated headers like TopTools_ListOfShape)
+  # instead of ocIncludeStatements which excludes deprecated NCollectionAliases
+  embindPreamble = ocAllIncludeStatements + "\n" + referenceTypeTemplateDefs + "\n" + customCode
 
   tuInfo = TuInfo(customCode)
   process(tuInfo, ".cpp", embindGenerationFuncClasses, embindGenerationFuncTemplates, embindGenerationFuncEnums, embindPreamble, True)
