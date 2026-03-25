@@ -89,8 +89,14 @@ def getMethodOverloadPostfix(theClass, method, children = None, arityBased = Tru
     return ["", numOverloads]
 
   if arityBased:
-    # Check if all overloads have unique arities (different param counts)
-    arities = [len(list(m.get_arguments())) for m in allOverloads]
+    # Check if all overloads have unique JS-visible arities.
+    # Output params (non-const ref to primitives) are stripped from the JS
+    # signature, so we must use the adjusted arity for collision detection.
+    def jsArity(m):
+      args = list(m.get_arguments())
+      return sum(1 for a in args if not isOutputParam(a))
+
+    arities = [jsArity(m) for m in allOverloads]
     allUniqueArities = len(arities) == len(set(arities))
 
     if allUniqueArities:

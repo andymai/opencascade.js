@@ -304,14 +304,31 @@ class EmbindBindings(Bindings):
         inputArgs = [(i, arg) for i, arg in enumerate(args) if not outputParamFlags[i]]
         outputArgs = [(i, arg) for i, arg in enumerate(args) if outputParamFlags[i]]
 
+        def _inputNeedsValWrap(arg):
+          """Check if a non-output input arg needs emscripten::val wrapping (enum/pointer refs)."""
+          t = arg.type
+          if t.kind == clang.cindex.TypeKind.LVALUEREFERENCE:
+            pointee = t.get_pointee()
+            if not pointee.is_const_qualified() and (
+              pointee.kind == clang.cindex.TypeKind.ENUM or
+              pointee.kind == clang.cindex.TypeKind.POINTER
+            ):
+              return True
+          return False
+
         # Build input param types/names for the lambda signature
         inputParamParts = []
         inputParamNamedParts = []
+        valWrappedInputs = []  # (argName, pointeeTypeName) for inputs needing val wrapping
         for i, arg in inputArgs:
           argType = self.resolveWithCanonicalFallback(arg.type.spelling, arg.type, templateDecl, templateArgs)
           argName = arg.spelling if arg.spelling else f"argNo{i}"
           if isCString(arg.type):
             argType = "std::string"
+          elif _inputNeedsValWrap(arg):
+            pointeeType = arg.type.get_pointee().spelling
+            valWrappedInputs.append((argName, pointeeType))
+            argType = "emscripten::val"
           inputParamParts.append(argType)
           inputParamNamedParts.append(f"{argType} {argName}")
 
@@ -329,12 +346,20 @@ class EmbindBindings(Bindings):
           defaultVal = getOutputParamDefaultValue(arg)
           localVarDecls += f"{indent(4)}{typeName} {varName} = {defaultVal};\n"
 
+        # getReferenceValue for val-wrapped inputs
+        refValueDecls = ""
+        for argName, pointeeType in valWrappedInputs:
+          refValueDecls += f"{indent(4)}auto ref_{argName} = getReferenceValue<{pointeeType}>({argName});\n"
+
         # Invocation args (in original order)
         invocationArgs = []
+        valWrappedNames = {name for name, _ in valWrappedInputs}
         for i, arg in enumerate(args):
           argName = arg.spelling if arg.spelling else f"argNo{i}"
           if outputParamFlags[i]:
             invocationArgs.append(argName)
+          elif argName in valWrappedNames:
+            invocationArgs.append(f"ref_{argName}")
           elif isCString(arg.type):
             invocationArgs.append(f"{argName}.c_str()")
           else:
@@ -342,6 +367,11 @@ class EmbindBindings(Bindings):
 
         caller = "that." if not method.is_static_method() else f"{className}::"
         hasResult = method.result_type.spelling != "void"
+
+        # updateReferenceValue for val-wrapped inputs (write back after call)
+        updateRefValues = ""
+        for argName, pointeeType in valWrappedInputs:
+          updateRefValues += f"{indent(4)}updateReferenceValue<{pointeeType}>({argName}, ref_{argName});\n"
 
         # Build the return val::object()
         returnBlock = f"{indent(4)}auto retObj = emscripten::val::object();\n"
@@ -358,8 +388,10 @@ class EmbindBindings(Bindings):
           f"std::function<emscripten::val({', '.join(allLambdaTypes)})>(",
           f"[]({', '.join(allLambdaParams)}) -> emscripten::val {{\n",
           localVarDecls,
+          refValueDecls,
           indent(4),
           f"{'auto ret = ' if hasResult else ''}{caller}{method.spelling}({', '.join(invocationArgs)});\n",
+          updateRefValues,
           returnBlock,
           f"{indent(3)}}})",
         )
@@ -611,7 +643,7 @@ class TypescriptBindings(Bindings):
       TypescriptBindings._docs_cache = {}
     return TypescriptBindings._docs_cache
 
-  def _jsdoc(self, class_name, method_name=None):
+  def _jsdoc(self, class_name, method_name=None, indent_level=1):
     """Generate JSDoc comment string from cached Doxygen docs."""
     docs = self._load_docs()
     cls = docs.get(class_name, {})
@@ -622,11 +654,12 @@ class TypescriptBindings(Bindings):
       doc = cls.get("doc", "")
     if not doc:
       return ""
+    pad = "  " * indent_level
     lines = doc.split("\n")
-    jsdoc = "  /**\n"
+    jsdoc = f"{pad}/**\n"
     for line in lines:
-      jsdoc += f"   * {line}\n"
-    jsdoc += "   */\n"
+      jsdoc += f"{pad} * {line}\n"
+    jsdoc += f"{pad} */\n"
     return jsdoc
 
   def _findBoundAncestor(self, theClass):
@@ -678,7 +711,7 @@ class TypescriptBindings(Bindings):
             baseClassDefinition = " extends " + directBase
 
     name = getClassTypeName(theClass, templateDecl)
-    classDoc = self._jsdoc(name)
+    classDoc = self._jsdoc(name, indent_level=0)
     if classDoc:
       output += classDoc
     output += "export declare class " + name + baseClassDefinition + " {\n"
@@ -722,7 +755,10 @@ class TypescriptBindings(Bindings):
       return output
 
     argsTypescriptDef = ", ".join(list(map(lambda x: self.getTypescriptDefFromArg(x), list(standardConstructor.get_arguments()))))
-    
+
+    ctorDoc = self._jsdoc(theClass.spelling, theClass.spelling)
+    if ctorDoc:
+      output += ctorDoc
     output += "  constructor(" + argsTypescriptDef + ")\n"
     return output
 
