@@ -93,11 +93,20 @@ def runBuild(build, libraryBasePath):
         continue
       if item.endswith(".o"):
         sourcesO.append(dirpath + "/" + item)
+  # Separate custom code bindings (myMain.h/) from standard OCCT bindings.
+  # Custom bindings use EMSCRIPTEN_BINDINGS() constructors that LTO can strip.
+  # Wrap them with --whole-archive to prevent this.
+  customBindingsO = [o for o in bindingsO if "/myMain.h/" in o]
+  standardBindingsO = [o for o in bindingsO if "/myMain.h/" not in o]
+
   patchDir = os.path.join(os.path.dirname(__file__), "patches")
   linkCmd = [
     "emcc", "-lembind",
     *([additionalBindCodeO] if additionalBindCodeO else []),
-    *bindingsO, *sourcesO,
+    *standardBindingsO,
+    # Prevent LTO from stripping EMSCRIPTEN_BINDINGS() constructors in custom code
+    *(["-Wl,--whole-archive"] + customBindingsO + ["-Wl,--no-whole-archive"] if customBindingsO else []),
+    *sourcesO,
     "-o", os.getcwd() + "/" + build["name"],
     *(["-pthread"] if os.environ["threading"] == "multi-threaded" else []),
     "--post-js", os.path.join(patchDir, "symbol_dispose.js"),
